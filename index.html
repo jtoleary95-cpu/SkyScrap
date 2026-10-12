@@ -606,6 +606,9 @@ CHARS.calypso.tether=1;CHARS.admiral.tether=1;
 for(const k in CHARS){const c=CHARS[k];c.ffall=Math.round(c.ffall*1.12*10)/10;c.maxFall=Math.round(c.maxFall*1.06*10)/10;}
 CHARS.gorbo.recSide=1;CHARS.gorbo.fuel=1;CHARS.gorbo.cpuHoldB=1;CHARS.gorbo.cpuSide=1;
 // cut from the roster (code kept): dentist, gorbo, cinder, pip, cholla, clank, ginger (Rhizo), shelby
+// balance pass (simulated 1v1s): damage multiplier and weight per fighter
+const BALANCE={"mochi":{"pow":1.034,"weight":60.8},"calypso":{"pow":0.951,"weight":93.2},"tumbles":{"pow":1.041,"weight":106.9},"echo":{"pow":1.05,"weight":86.8},"zip":{"pow":1.196,"weight":59.1},"nitro":{"pow":1.076,"weight":87.5},"admiral":{"pow":1.404,"weight":144.2},"carnie":{"pow":1.054,"weight":92.0},"lychee":{"pow":1.128,"weight":117.6},"giraffe":{"pow":1.261,"weight":110.0},"hippo":{"pow":0.87,"weight":127.8},"mitt":{"pow":0.894,"weight":86.0},"gouda":{"pow":0.979,"weight":57.5},"wick":{"pow":0.832,"weight":89.1}};
+for(const k in BALANCE)Object.assign(CHARS[k],BALANCE[k]);
 const PLAYABLE=['mochi','calypso','tumbles','echo','zip','nitro','admiral','carnie','lychee','giraffe','hippo','mitt','gouda','wick'];
 const VOIDCHARS=['slab','slug'];
 
@@ -1823,7 +1826,7 @@ function hitTarget(att,t,hb,hx,hy,mul,proj){
   t.x=att.x-att.face*(att.w/2+t.w/2+4);t.y=att.ground?att.ground.y:att.y;t.ground=att.ground;t.face=att.face;unsink(t);startMove(t,'dbhit');t.inv=Math.max(t.inv,10);att.hitlag=10;snd('pop',.7);return;}
  if(hb.wind){const dir=sgn(t.x-att.x)||att.face;t.kvx=clamp(t.kvx+dir*hb.wind*0.45,-hb.wind*2.2,hb.wind*2.2);if(!t.ground&&t.kvy>-1)t.kvy-=0.15;
   if(hb.d){t.pct=Math.min(999,t.pct+hb.d);t.hud=4;att.dmgDone+=hb.d;}if(frame%4===0)fxPush({k:'water',x:hx,y:hy,vx:dir*2,vy:-0.5,t:0,len:12,s:6});return;}
- const d=Math.round(hb.d*mul);
+ const d=Math.round(hb.d*mul*(att&&att.c&&att.c.pow||1));
  if(t.state==='shield'||t.state==='shieldstun'){shieldHit(att,t,d,hx,proj);return;}
  if(t.drum&&!proj&&(sgn(att.x-t.x)||t.face)===t.face){drumBlock(att,t,hx,hy);return;}
  const dir=proj?sgn(proj.vx)||1:hb.pull?-(sgn(t.x-att.x)||att.face):hb.dir==='rev'?-att.face:hb.dir==='away'?(sgn(t.x-att.x)||att.face):att.face;
@@ -1951,7 +1954,14 @@ function physics(f){
 // Nobody is ever allowed inside the stage. If feet end up inside a solid block (hit nudges, moving
 // floors, odd timing), they're put back on the nearest floor above. Runs after every physics step and after hit nudges.
 function inBody(x,y){for(const r of STG.body)if(x>r[0]&&x<r[2]&&y>r[1]+0.5&&y<r[3])return true;return false;}
-function unsink(f){if(f.ground&&f.ground.y<5000&&f.y>f.ground.y&&f.y-f.ground.y<60)f.y=f.ground.y;if(f.ground){if(!(f.ground.moving||f.ground.soft)||!inBody(f.x,f.y))return;f.ground=null;}if(f.out||['ledge','ledgeclimb','held','respawn','rope','fold','squeezed','swallowed'].includes(f.state))return;
+// solid blocks act as walls: anyone whose feet end up inside one is lifted onto it (if it's a short step) or pushed out the nearer side
+const BURY_SKIP=['ledge','ledgeclimb','held','respawn','rope','fold','squeezed','swallowed'];
+function unbury(f){if(f.out||BURY_SKIP.includes(f.state))return;
+ for(let pass=0;pass<3;pass++){let hit=null;for(const r of STG.body)if(f.x>r[0]&&f.x<r[2]&&f.y-1>r[1]+0.5&&f.y-1<r[3]){hit=r;break;}if(!hit)return;const r=hit,up=f.y-r[1];
+  if(up<=48&&(f.ground||f.vy+f.kvy>=-0.5)){f.y=r[1];const S=solidsOf().find(S=>S.y<5000&&Math.abs(S.y-r[1])<2&&f.x>=S.x1-1&&f.x<=S.x2+1);if(S)f.ground=S;else if(f.ground&&Math.abs(f.ground.y-r[1])>2)f.ground=null;}
+  else{const L=f.x-r[0],R=r[2]-f.x,d=L<R?-1:1;f.x=d<0?r[0]-1:r[2]+1;if(sgn(f.vx)===-d)f.vx=0;if(sgn(f.kvx)===-d)f.kvx=-f.kvx*0.3;
+   if(f.ground){const S=solidsOf().find(S=>S.y<5000&&Math.abs(S.y-f.ground.y)<1&&f.x>=S.x1-1&&f.x<=S.x2+1);if(!S)f.ground=null;}}}}
+function unsink(f){unbury(f);if(f.ground&&f.ground.y<5000&&f.y>f.ground.y&&f.y-f.ground.y<60)f.y=f.ground.y;if(f.ground){if(!(f.ground.moving||f.ground.soft)||!inBody(f.x,f.y))return;f.ground=null;}if(f.out||['ledge','ledgeclimb','held','respawn','rope','fold','squeezed','swallowed'].includes(f.state))return;
  if(!inBody(f.x,f.y))return;let best=null;
  for(const S of solidsOf()){if(S.y>5000||f.x<S.x1-1||f.x>S.x2+1||S.y>f.y+0.5)continue;if(STG.spot&&S===STG.main&&tileOpenAt(f.x))continue;if(!best||S.y>best.y)best=S;}
  if(!best)return;f.y=best.y;f.x=clamp(f.x,best.x1,best.x2);if(f.kvy>0)f.kvy=0;if(f.vy>0)f.vy=0;land(f,best);}
@@ -2445,7 +2455,7 @@ function startMatch(opts){
  slots.forEach((q,k)=>{if(q.type!=='off')q.char=fitChar(q.char,STG.id,k);});
  let n=0;
  slots.forEach((s,k)=>{if(s.type==='off')return;const f=makeFighter(k,s,rules);if(opts.pct)f.pct=opts.pct;fighters.push(f);n++;});
- cam.x=0;cam.y=-80;cam.z=Math.min(SW/1000,SH/620);
+ cam.x=0;cam.y=-80;cam.tx=0;cam.ty=-80;cam.z=Math.min(SW/1000,SH/620);wakeOn();
  if(!G.attract)snd('go',0);
  musicSync();
 }
@@ -2677,21 +2687,39 @@ function voicesScreen(msg){
  bind('[data-del]',el=>{const id=el.dataset.del;delete VOX.raw[id];delete VOX.mine[id];try{localStorage.removeItem(voxKey(id));}catch(e){}voicesScreen(CHARS[id].name+' voice removed.');});
 }
 /* ---------------- rendering ---------------- */
+// fighters outside your view show up as a bubble on the screen edge, pointing at them
+function drawOffscreen(){if(!G||G.attract)return;screenT();const z=cam.z,used=[];
+ for(const f of fighters){if(f.out||f.state==='respawn')continue;const sx=SW/2+cam.sx+(f.x-cam.x)*z,sy=SH/2+20+cam.sy+(f.y-f.h/2-cam.y)*z;
+  if(sx>-10&&sx<SW+10&&sy>-10&&sy<SH+10)continue;const m=26;let cx=clamp(sx,m,SW-m),cy=clamp(sy,m+56,SH-m);const side=cx<=m||cx>=SW-m;for(let k=0;k<6&&used.some(u=>Math.hypot(u[0]-cx,u[1]-cy)<38);k++){if(side)cy=cy+38>SH-m?cy-38*(k+1):cy+38;else cx=cx+38>SW-m?cx-38*(k+1):cx+38;}used.push([cx,cy]);const a=Math.atan2(sy-cy,sx-cx);
+  ctx.save();ctx.translate(cx,cy);ctx.fillStyle=f.col;ctx.strokeStyle='#1b2338';ctx.lineWidth=3;
+  ctx.save();ctx.rotate(a);ctx.beginPath();ctx.moveTo(26,0);ctx.lineTo(10,-10);ctx.lineTo(10,10);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();
+  ctx.beginPath();ctx.arc(0,0,17,0,7);ctx.fill();ctx.stroke();ctx.fillStyle='#fff';ctx.font='800 12px "Baloo 2",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.strokeText(Math.round(f.pct)+'%',0,1);ctx.fillText(Math.round(f.pct)+'%',0,1);ctx.restore();}}
+function camFocus(){if(!G||G.attract||G.boss)return null;const me=fighters.find(f=>f.cfg&&f.cfg.type==='human');if(!me||me.out||me.state==='respawn')return null;return me;}
 function updateCamera(){
  let x1=1e9,x2=-1e9,y1=1e9,y2=-1e9,n=0;
- for(const f of fighters){if(f.out)continue;n++;x1=Math.min(x1,f.x-90);x2=Math.max(x2,f.x+90);y1=Math.min(y1,f.y-f.h-110);y2=Math.max(y2,f.y+70);}
+ // each phone follows its own fighter and pulls back to include anyone close by; KO'd or out = watch everyone
+ const me=camFocus();
+ for(const f of fighters){if(f.out)continue;
+  if(me&&f!==me){const dx=Math.abs(f.x-me.x),dy=Math.abs(f.y-me.y),R=f.camIn?1.25:1;f.camIn=dx<560*R&&dy<400*R;if(!f.camIn)continue;}
+  n++;x1=Math.min(x1,f.x-90);x2=Math.max(x2,f.x+90);y1=Math.min(y1,f.y-f.h-110);y2=Math.max(y2,f.y+70);}
  const Bo=G&&G.boss;if(Bo&&Bo.st!=='enter'&&Math.abs(Bo.x)<1400&&Bo.y>-1200){x1=Math.min(x1,Bo.x-160);x2=Math.max(x2,Bo.x+160);y1=Math.min(y1,Bo.y-160);y2=Math.max(y2,Bo.y+140);n++;}
  if(!n){x1=STG.main.x1;x2=STG.main.x2;y1=-400;y2=120;}
  // the dragon gets the whole stage in frame
  if(STG.dragon&&HZ.dg&&HZ.dg.ph>0&&!(G&&G.attract)){x1=Math.min(x1,STG.main.x1-120);x2=Math.max(x2,STG.main.x2+120);y1=Math.min(y1,-880);}
  // never tighter than a comfortable minimum, and keep the floor in view
- const minW=G&&G.attract?STG.main.x2-STG.main.x1+200:620,minH=350;y2=Math.max(y2,STG.main.y+90);
+ const minW=G&&G.attract?STG.main.x2-STG.main.x1+200:780,minH=430;y2=Math.max(y2,STG.main.y+90);
  if(x2-x1<minW){const c=(x1+x2)/2;x1=c-minW/2;x2=c+minW/2;}if(y2-y1<minH){y1=y2-minH;}
  const B=STG.blast;x1=Math.max(x1,B.l-40);x2=Math.min(x2,B.r+40);y1=Math.max(y1,B.t-40);y2=Math.min(y2,B.b+40);
- const tx=(x1+x2)/2,ty=(y1+y2)/2;
+ let tx=(x1+x2)/2,ty=(y1+y2)/2;
+ if(me){const fx=me.x,fy=me.y-me.h/2;tx=lerp(tx,fx,0.4);ty=lerp(ty,fy,0.3);const hw=Math.max(tx-x1,x2-tx),hh=Math.max(ty-y1,y2-ty);x1=tx-hw;x2=tx+hw;y1=ty-hh;y2=ty+hh;}
  const topPad=60,botPad=10;
  const z=clamp(Math.min(SW/(x2-x1+120),(SH-topPad-botPad)/(y2-y1+80))*1.25,Math.min(SW,SH*1.6)/2900,Math.min(SW,SH*1.6)/500);
- cam.x=lerp(cam.x,tx,0.08);cam.y=lerp(cam.y,ty,0.08);cam.z=lerp(cam.z,z,0.06);
+ // calm camera: a dead zone so small moves don't pan, slow zoom-in, quicker zoom-out so nobody leaves the frame
+ const dzx=70/cam.z*0.5,dzy=50/cam.z*0.5;cam.tx=cam.tx===undefined?tx:cam.tx;cam.ty=cam.ty===undefined?ty:cam.ty;
+ if(Math.abs(tx-cam.tx)>dzx)cam.tx+=(tx-cam.tx)-Math.sign(tx-cam.tx)*dzx;if(Math.abs(ty-cam.ty)>dzy)cam.ty+=(ty-cam.ty)-Math.sign(ty-cam.ty)*dzy;
+ cam.x=lerp(cam.x,cam.tx,0.045);cam.y=lerp(cam.y,cam.ty,0.045);
+ if(Math.abs(z/cam.z-1)>0.05||z<cam.z)cam.z=lerp(cam.z,z,z<cam.z?0.045:0.018);
  cam.sx=(rand()-.5)*cam.shake;cam.sy=(rand()-.5)*cam.shake;
 }
 function worldT(){const z=cam.z;ctx.setTransform(DPR*z,0,0,DPR*z,DPR*(SW/2+cam.sx-cam.x*z),DPR*(SH/2+20+cam.sy-cam.y*z));}
@@ -2708,12 +2736,13 @@ function h3(x,y,z){const s=Math.sin(x*127.1+y*311.7+z*74.7)*43758.5453;return s-
 function vn3(x,y,z){const xi=Math.floor(x),yi=Math.floor(y),zi=Math.floor(z),xf=x-xi,yf=y-yi,zf=z-zi,u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf),w=zf*zf*(3-2*zf),L=(a,b,t)=>a+(b-a)*t;
  return L(L(L(h3(xi,yi,zi),h3(xi+1,yi,zi),u),L(h3(xi,yi+1,zi),h3(xi+1,yi+1,zi),u),v),L(L(h3(xi,yi,zi+1),h3(xi+1,yi,zi+1),u),L(h3(xi,yi+1,zi+1),h3(xi+1,yi+1,zi+1),u),v),w);}
 function fbm3(x,y,z){let a=0,m=0.5;for(let k=0;k<4;k++){a+=vn3(x,y,z)*m;x*=2.03;y*=2.03;z*=2.03;m*=0.5;}return a;}
-const GLSL_NOISE=`float hh(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+const GLSL_NOISE=`float hh(vec2 p){vec3 q=fract(vec3(p.xyx)*.1031);q+=dot(q,q.yzx+33.33);return fract((q.x+q.y)*q.z);}
 float nz(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hh(i),hh(i+vec2(1,0)),f.x),mix(hh(i+vec2(0,1)),hh(i+vec2(1,1)),f.x),f.y);}
 float fbm(vec2 p){float a=0.,m=.5;for(int k=0;k<5;k++){a+=nz(p)*m;p=p*2.03+vec2(1.7,9.2);m*=.5;}return a;}`;
 function c3Init(){
  const T=THREE,TAU=Math.PI*2;
- const cv=document.createElement('canvas');const r=new T.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'high-performance'});
+ const cv=document.createElement('canvas');cv.id='c3d';cv.style.cssText='position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none';document.body.insertBefore(cv,document.getElementById('c'));
+ const r=new T.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'high-performance'});
  r.setPixelRatio(1);
  const sc=new T.Scene();sc.fog=new T.Fog(0xf0b493,7000,46000);
  const cam=new T.PerspectiveCamera(40,1.6,30,140000);
@@ -3047,7 +3076,7 @@ function c3Rays(){
 function bgCloudspire(){
  screenT();
  if(C3.st===0)c3Load();
- if(C3.st===2){try{c3Render();ctx.drawImage(C3.cv,0,0,SW,SH);c3Rays();return;}catch(e){console.warn(e);C3.st=-1;}}
+ if(C3.st===2){try{c3Render();if(C3.cv.style.display!=='block')C3.cv.style.display='block';ctx.clearRect(0,0,SW,SH);c3Rays();return;}catch(e){console.warn(e);C3.st=-1;C3.cv.style.display='none';}}
  // painted stand-in while three.js loads (or if it can't)
  const g=ctx.createLinearGradient(0,0,0,SH);g.addColorStop(0,'#22336f');g.addColorStop(0.45,'#8a6cb4');g.addColorStop(0.75,'#f49c8c');g.addColorStop(1,'#ffd49e');ctx.fillStyle=g;ctx.fillRect(0,0,SW,SH);
  const sx=SW*0.72-cam.x*0.02,sy=SH*0.62;const sg=ctx.createRadialGradient(sx,sy,6,sx,sy,200);sg.addColorStop(0,'rgba(255,246,214,1)');sg.addColorStop(1,'rgba(255,220,170,0)');ctx.fillStyle=sg;ctx.beginPath();ctx.arc(sx,sy,200,0,7);ctx.fill();
@@ -3099,7 +3128,7 @@ function drawCloudspire(){
   ctx.restore();}}
 }
 
-function drawBG(){const B={cloudspire:bgCloudspire,sky:bgSky,storm:bgStorm,ice:bgIce,island:bgIsland,train:bgTrain,void:bgVoid,kitchen:bgKitchen,lantern:bgLantern,volcano:bgVolcano,hole:bgHole,greenhouse:bgGreenhouse,shelf:bgShelf,workshop:bgWorkshop,ferris:bgFerris,moon:bgMoon,origami:bgOrigami,spot:bgSpot,ship:bgShip}[STG.id];if(B)return B();bgTemple();}
+function drawBG(){if(C3.cv&&STG.id!=='cloudspire'&&C3.cv.style.display!=='none')C3.cv.style.display='none';const B={cloudspire:bgCloudspire,sky:bgSky,storm:bgStorm,ice:bgIce,island:bgIsland,train:bgTrain,void:bgVoid,kitchen:bgKitchen,lantern:bgLantern,volcano:bgVolcano,hole:bgHole,greenhouse:bgGreenhouse,shelf:bgShelf,workshop:bgWorkshop,ferris:bgFerris,moon:bgMoon,origami:bgOrigami,spot:bgSpot,ship:bgShip}[STG.id];if(B)return B();bgTemple();}
 function bgTemple(){
  screenT();
  const g=ctx.createLinearGradient(0,0,0,SH);g.addColorStop(0,'#3d8fd6');g.addColorStop(0.55,'#8fd0f0');g.addColorStop(1,'#ffd9a8');
@@ -5108,7 +5137,7 @@ function render(){
  if(G.boss)drawBoss();
  if(STG.flood&&HZ.flood<40){const wy=HZ.flood;ctx.fillStyle='rgba(90,160,180,.38)';ctx.beginPath();ctx.moveTo(-1500,wy);for(let x=-1500;x<=1500;x+=40)ctx.lineTo(x,wy+Math.sin(x/45+frame*0.07)*3);ctx.lineTo(1500,wy+700);ctx.lineTo(-1500,wy+700);ctx.closePath();ctx.fill();ctx.strokeStyle='rgba(220,245,255,.6)';ctx.lineWidth=2;ctx.beginPath();for(let x=-1500;x<=1500;x+=40)x===-1500?ctx.moveTo(x,wy+Math.sin(x/45+frame*0.07)*3):ctx.lineTo(x,wy+Math.sin(x/45+frame*0.07)*3);ctx.stroke();}
  drawFX();
- drawHUD();drawTouch();
+ drawOffscreen();drawHUD();drawTouch();
 }
 function loop(now){
  const dt=Math.min(100,now-lastT);lastT=now;acc+=dt;
@@ -5117,7 +5146,10 @@ function loop(now){
  if(G)render();
  requestAnimationFrame(loop);
 }
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&G&&!G.attract&&!G.paused&&G.endT===0)togglePause();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&G&&!G.attract&&!G.paused&&G.endT===0&&!G.net)togglePause();if(!document.hidden)wakeOn();});
+// keep the screen awake during a match so a knocked-out player's phone doesn't lock and stall the host
+let WAKE=null;function wakeOn(){try{if(!navigator.wakeLock||(WAKE&&!WAKE.released))return;navigator.wakeLock.request('screen').then(w=>{WAKE=w;}).catch(()=>{});}catch(e){}}
+addEventListener('pointerdown',()=>{if(G&&!G.attract)wakeOn();},{passive:true});
 
 /* ---------------- online: direct phone-to-phone ---------------- */
 const FB_CFG={apiKey:"AIzaSyBcsUoFs2p9MBd_ZA5QdCznjmhYimHGmw0",authDomain:"battle-ship-7f0d9.firebaseapp.com",databaseURL:"https://battle-ship-7f0d9-default-rtdb.firebaseio.com",
