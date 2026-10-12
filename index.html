@@ -1391,6 +1391,7 @@ function crackShell(f){const col=SHELLC[f.shell]||'#d9b38a';f.shell=null;f.shell
  for(let k=0;k<9;k++)fxPush({k:'debris',x:f.x-f.face*6,y:f.y-f.h*0.6,vx:(rand()-.5)*6,vy:-2-rand()*4,t:0,len:30,s:5+rand()*4,col});}
 function charTick(f){
  if(f.waxT>0)f.waxT--;
+ if(f.giant&&(f.size||1)!==1.45&&f.state!=='respawn')setSize(f,1.45);
  if(f.id!=='wick'&&f.id!=='shelby')return;
  if(f.c===CHARS[f.id])f.c=Object.create(CHARS[f.id]);
  const B=CHARS[f.id],c=f.c;
@@ -2472,6 +2473,87 @@ function netBossResults(d,mode){if(G)G.paused=true;if(G&&!G.counted){G.counted=1
  menu.querySelectorAll('canvas[data-res]').forEach(c=>{const r=d.rows.find(q=>q.slot===+c.dataset.res);drawPortraitSafe(c,c.dataset.char,r.col);});
  bind('#again',hostStart);bind('#lb',()=>{netSend({t:'tolobby',l:lobbyState()});onlineLobby();});
  bind('#lv',()=>{netSend({t:'bye'});NET.closing=true;setTimeout(netReset,250);titleScreen();});}
+/* ---------------- ADVENTURE: 5 fights with carried-over stocks, then a challenger ---------------- */
+const ADVKEY='skyscrap_adv_v1';const ADVCFG={char:'mochi',stocks:3,diff:1};
+try{const a=JSON.parse(localStorage.getItem(ADVKEY)||'null');if(a)Object.assign(ADVCFG,a);}catch(e){}
+function saveAdv(){try{localStorage.setItem(ADVKEY,JSON.stringify(ADVCFG));}catch(e){}}
+let RUN=null;
+const ADV_FIGHTS=[{kind:'duel',title:'Round 1'},{kind:'duel',title:'Round 2'},{kind:'trio',title:'Double Trouble'},{kind:'giant',title:'Giant Battle'},{kind:'champ',title:'The Champion'}];
+function advPlan(me,partner,diff){
+ const pool=PLAYABLE.filter(c=>charOpen(c)&&c!==me&&c!==partner);for(let i=pool.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+ const pick=k=>pool.length?pool[k%pool.length]:PLAYABLE.filter(charOpen)[k%PLAYABLE.filter(charOpen).length];
+ const base=[2,4,6][diff]||4;
+ return ADV_FIGHTS.map((F,i)=>{const foes=F.kind==='trio'?[pick(i+1),pick(i+2)]:[pick(i===3?4:i===4?5:i)];
+  const home=HOME[foes[0]];const stage=F.kind==='champ'?'spot':(home&&STAGES[home]&&stageOpen(home)?home:'temple');
+  return{...F,n:i+1,foes,stage,lvl:clamp(base+[0,1,1,2,3][i]+(partner?1:0),1,9)};});}
+function advHumans(){return fighters.filter(f=>f.cfg&&(f.cfg.type==='human'||f.cfg.type==='remote'));}
+function advBegin(o){ // o: {me, partner|null, diff, stocks, online}
+ RUN={me:o.me,partner:o.partner||null,diff:o.diff,start:o.stocks,left:[o.stocks,o.stocks],score:0,i:0,cont:0,online:!!o.online,plan:advPlan(o.me,o.partner,o.diff),t0:Date.now()};
+ advIntro();}
+function advCardHTML(d,host){
+ const stk=n=>'●'.repeat(Math.max(0,n))+'○'.repeat(Math.max(0,d.start-n));
+ return `<h2 style="color:#ffd166">${d.n<=5?'FIGHT '+d.n+' OF 5':'FINAL CHALLENGE'}</h2><div class="note" style="font-size:20px"><b>${d.title}</b> · ${STAGES[d.stage]?STAGES[d.stage].name:''}</div>
+ <div class="row" style="gap:14px;align-items:center">${d.foes.map(id=>`<div style="text-align:center"><canvas width="128" height="128" data-af="${id}" style="position:static;width:${d.kind==='giant'?118:86}px;height:${d.kind==='giant'?118:86}px"></canvas><div class="note">${d.kind==='chal'?'???':CHARS[id].name}${d.kind==='giant'?' (giant)':''}</div></div>`).join('<div class="note" style="font-size:22px">&amp;</div>')}</div>
+ <div class="note">Stocks: <b style="letter-spacing:2px">${stk(d.left[0])}</b>${d.partner?` · Friend: <b style="letter-spacing:2px">${stk(d.left[1])}</b>`:''} · Score <b>${d.score}</b></div>
+ <div class="row">${host?'<button class="btn" id="ago">FIGHT!</button><button class="btn alt sm" id="aq">QUIT</button>':'<div class="note">The host starts the fight…</div>'}</div>`;}
+function advCardDraw(d){menu.querySelectorAll('canvas[data-af]').forEach(c=>{if(d.kind==='chal')silhouette(c,c.dataset.af);else drawPortraitSafe(c,c.dataset.af,PALETTE[2]);});}
+function advCardData(F){return{n:F.n,title:F.title,kind:F.kind,foes:F.foes,stage:F.stage,left:RUN.left.slice(),start:RUN.start,partner:RUN.partner,score:RUN.score};}
+function advIntro(){const F=RUN.plan[RUN.i];const d=advCardData(F);if(RUN.online)netSend({t:'advi',d});
+ if(!G||!G.attract)startMatch({attract:true,slots:[{type:'cpu',char:F.foes[0],lvl:8},{type:'cpu',char:RUN.me,lvl:8},{type:'off'},{type:'off'}],rules:{stocks:0,time:0},stage:F.stage});
+ showMenu(advCardHTML(d,true),true);advCardDraw(d);bind('#ago',advFight);bind('#aq',()=>advGameOver(true));}
+function advFight(){const F=RUN.plan[RUN.i];const humans=[{type:'human',char:RUN.me,col:0}];if(RUN.partner)humans.push({type:'remote',char:RUN.partner,col:1});
+ const foes=F.foes.map((id,k)=>({type:'cpu',char:id,lvl:F.lvl,col:humans.length+k}));const slots=[...humans,...foes];while(slots.length<4)slots.push({type:'off'});
+ const o={stage:F.stage,items:'off',rules:{stocks:Math.max(...RUN.left),time:0},slots,adv:{n:F.n,kind:F.kind}};
+ if(RUN.online)launchNet(o);else{startMatch(o);hideMenu();clearTouch();}
+ G.adv=F;G.lastNet=RUN.online?o:G.lastNet;advSetup();}
+function advSetup(){const F=G.adv;G.advF0=frame;fighters.forEach((f,k)=>{if(f.cfg.type==='cpu'){f.stocks=1;if(F.kind==='giant'){f.giant=1;setSize(f,1.45);}}else{const h=f.cfg.type==='human'?0:1;f.stocks=Math.max(1,RUN.left[h]);}});}
+function advAfterFight(){G.paused=true;const F=G.adv,H=advHumans(),won=H.some(f=>!f.out);
+ if(F.kind==='chal')return advChalResult(won);
+ if(!won)return advContinue();
+ const secs=Math.round((frame-(G.advF0||0))/TPS),dmg=H.reduce((a,f)=>a+f.dmgDone,0);
+ const gain=1000*F.n+Math.max(0,1500-secs*10)+Math.round(dmg)*5;RUN.score+=gain;
+ H.forEach(f=>{const h=f.cfg.type==='human'?0:1;RUN.left[h]=f.out?1:f.stocks;});RUN.i++;
+ if(RUN.i<5)return advIntro();
+ advCleared();}
+function advContinue(){const d={score:RUN.score,half:Math.floor(RUN.score/2)};if(RUN.online)netSend({t:'advc',d});
+ showMenu(`<h2 style="color:#ff8a80">CONTINUE?</h2><div class="note" style="font-size:20px">Score ${RUN.score} → ${d.half} if you continue.</div><div class="row"><button class="btn" id="ac">CONTINUE</button><button class="btn alt" id="ag">GIVE UP</button></div>`,true);
+ bind('#ac',()=>{RUN.cont++;RUN.score=d.half;RUN.left=[RUN.start,RUN.start];advIntro();});bind('#ag',()=>advGameOver(false));}
+function advCleared(){const best=Math.max(PROG.best||0,RUN.score);PROG.best=best;saveProg();
+ const due=!setup.unlockAll&&lockedChars().length>0;const d={score:RUN.score,best,due,cont:RUN.cont};if(RUN.online)netSend({t:'adve',d,clear:1});
+ showMenu(`<h2 style="color:#4cd47a">ADVENTURE CLEAR!</h2><div class="note" style="font-size:20px">Score <b>${RUN.score}</b> · Best ${best}${RUN.cont?` · ${RUN.cont} continue${RUN.cont>1?'s':''}`:''}</div>
+  <div class="row">${due?'<button class="btn" id="an">…SOMETHING APPROACHES</button>':'<button class="btn" id="ad">DONE</button>'}</div>`,true);
+ bind('#an',advChallenger);bind('#ad',()=>advExit());}
+function advChallenger(){let id=PROG.chal;if(!id||!lockedChars().includes(id)){const L=lockedChars();id=L[Math.floor(Math.random()*L.length)];PROG.chal=id;saveProg();}
+ const F={kind:'chal',title:'A new challenger approaches!',n:6,foes:[id],stage:STAGES[HOME[id]]?HOME[id]:'temple',lvl:clamp(([2,4,6][RUN.diff]||4)+3,1,9)};RUN.plan[5]=F;RUN.i=5;RUN.left=[2,2];snd('go',.8);
+ const d=advCardData(F);if(RUN.online)netSend({t:'advi',d});showMenu(advCardHTML(d,true),true);advCardDraw(d);bind('#ago',advFight);bind('#aq',()=>advExit());}
+function advChalResult(won){const id=G.adv.foes[0];if(won)advUnlock(id);if(RUN.online)netSend({t:'advu',id,won});advChalScreen(id,won,true);}
+function advUnlock(id){if(!PROG.chars.includes(id))PROG.chars.push(id);PROG.chal=null;saveProg();}
+function advChalScreen(id,won,host){const stg=HOME[id]&&STAGES[HOME[id]]?STAGES[HOME[id]].name:null;
+ showMenu(won?`<h2 style="color:#4cd47a">UNLOCKED!</h2><canvas width="192" height="192" id="chc" style="position:static;width:150px;height:150px"></canvas><div class="note"><b>${CHARS[id].name}</b> joins the fight.${stg?`<br>New stage: <b>${stg}</b>`:''}</div><div class="row">${host?'<button class="btn" id="cn">CONTINUE</button>':'<div class="note">Waiting for the host…</div>'}</div>`
+  :`<h2>${CHARS[id].name.toUpperCase()} GOT AWAY</h2><canvas width="192" height="192" id="chc" style="position:static;width:150px;height:150px"></canvas><div class="note">They'll be back after your next Adventure clear.</div><div class="row">${host?'<button class="btn" id="cn">CONTINUE</button>':'<div class="note">Waiting for the host…</div>'}</div>`,true);
+ const c=menu.querySelector('#chc');if(won){drawPortraitSafe(c,id,PALETTE[1]);snd('go',1);}else silhouette(c,id);bind('#cn',()=>advExit());}
+function advGameOver(quit){const best=Math.max(PROG.best||0,RUN.score);PROG.best=best;saveProg();const d={score:RUN.score,best};if(RUN.online)netSend({t:'adve',d,clear:0});
+ showMenu(`<h2>${quit?'ADVENTURE ENDED':'GAME OVER'}</h2><div class="note" style="font-size:20px">Score <b>${RUN.score}</b> · Best ${best}</div><div class="row"><button class="btn" id="ad">DONE</button></div>`,true);bind('#ad',()=>advExit());}
+function advExit(){const online=RUN&&RUN.online;RUN=null;if(G)G.adv=null;if(online){netSend({t:'tolobby',l:lobbyState()});onlineLobby();}else advScreen();}
+// guest side: mirror the host's screens
+function advGuest(m){
+ if(m.t==='advi'){if(G&&!G.attract)G.paused=true;showMenu(advCardHTML(m.d,false),true);advCardDraw(m.d);}
+ else if(m.t==='advc'){showMenu(`<h2 style="color:#ff8a80">CONTINUE?</h2><div class="note" style="font-size:20px">Score ${m.d.score} → ${m.d.half} if you continue.</div><div class="note">The host decides…</div>`,true);}
+ else if(m.t==='adve'){showMenu(`<h2 style="color:${m.clear?'#4cd47a':'#fff'}">${m.clear?'ADVENTURE CLEAR!':'GAME OVER'}</h2><div class="note" style="font-size:20px">Score <b>${m.d.score}</b></div><div class="note">${m.clear&&m.d.due?'Something approaches… the host continues.':'Waiting for the host…'}</div>`,true);}
+ else if(m.t==='advu'){if(m.won)advUnlock(m.id);advChalScreen(m.id,m.won,false);}}
+function advScreen(){const C=ADVCFG;C.char=fitChar(C.char,'',0);
+ showMenu(`<div class="bar"><button class="btn alt sm" id="bk">BACK</button><h2>ADVENTURE</h2><button class="btn sm" id="go" style="font-size:22px;padding:6px 26px">START!</button></div>
+ <div class="vs"><div class="card"><h3>YOUR FIGHTER</h3><div class="slots"><div class="slot" style="border-color:${PALETTE[0]}"><div class="tag" style="background:${PALETTE[0]}">P1 · YOU</div><canvas width="128" height="128" data-ap="1"></canvas><div class="nm" data-ap="1">${CHARS[C.char].name} ▸</div></div></div>
+  <div class="note" style="margin-top:6px">Five fights in a row. Your stocks carry over from fight to fight. Clear all five and a locked fighter may challenge you.</div></div>
+ <div class="card"><h3>RULES</h3><div class="opt">Stocks<div class="seg"><b data-as="-1">−</b><span>${C.stocks}</span><b data-as="1">+</b></div></div>
+  <div class="opt">Difficulty<div class="seg">${['EASY','NORMAL','HARD'].map((l,k)=>`<b data-ad="${k}" class="${C.diff===k?'on':''}">${l}</b>`).join('')}</div></div>
+  <div class="note">Best score: <b>${PROG.best||0}</b></div><button class="btn alt sm" id="af">PLAY WITH A FRIEND</button><div class="note">Two phones: go Online, then pick ADVENTURE in the lobby.</div></div></div>`,true);
+ menu.querySelectorAll('canvas[data-ap]').forEach(c=>drawPortraitSafe(c,C.char,PALETTE[0]));
+ bind('[data-ap]',()=>charPicker(C.char,PALETTE[0],'PICK YOUR FIGHTER',id=>{C.char=id;saveAdv();advScreen();},''));
+ bind('[data-as]',el=>{C.stocks=clamp(C.stocks+(+el.dataset.as),1,5);saveAdv();advScreen();});
+ bind('[data-ad]',el=>{C.diff=+el.dataset.ad;saveAdv();advScreen();});
+ bind('#af',onlineScreen);bind('#bk',titleScreen);bind('#go',()=>{goFull();advBegin({me:C.char,diff:C.diff,stocks:C.stocks});});}
+
 /* ---------------- match flow ---------------- */
 function startMatch(opts){
  opts=opts||{};
@@ -2515,6 +2597,7 @@ function stepGame(){
  if(G.countdown===0&&G.endT===0&&!G.attract&&!G.training){
   if(G.rules.time){G.timer--;if(G.timer<=0){G.timer=0;endMatch();}}
   if(G.boss){if(fighters.every(f=>f.out)&&!G.boss.over){G.boss.over='lose';endMatch();}}
+  else if(G.adv){const H=advHumans();if(H.every(f=>f.out)||fighters.filter(f=>!H.includes(f)).every(f=>f.out))endMatch();}
   else if(G.rules.stocks&&fighters.filter(f=>!f.out).length<=1)endMatch();
  }
  if(G.attract){const alive=fighters.filter(f=>!f.out);if(alive.length<=1){fighters.forEach(f=>{f.out=false;f.stocks=Infinity;if(f.state!=='respawn')ko(f);});}}
@@ -5541,6 +5624,7 @@ function onNetMsg(m){
   case 'lobby':if(NET.role==='guest'){const first=!NET.lobby;NET.lobby=m.l;if(isLobby()||(first&&!menu.querySelector('.cgrid')))onlineLobby();}break;
   case 'start':if(NET.role==='guest')startGuestMatch(m.o);break;
   case 'bres':if(NET.role==='guest')netBossResults(m.d,'guest');break;
+  case 'advi':case 'advc':case 'adve':case 'advu':if(NET.role==='guest')advGuest(m);break;
   case 'res':if(NET.role==='guest')renderResults(m.rows,m.sd,'guest');break;
   case 'tolobby':if(NET.role==='guest'){NET.lobby=m.l||NET.lobby;onlineLobby();}break;
   case 'pause':if(G&&G.net&&!G.attract)setPause(!!m.on,false);break;
@@ -5616,6 +5700,7 @@ function blendSnap(a,b,k){k=clamp(k,0,1);
 function hostStart(){
  const L=lobbyState();const rules={stocks:L.rules==='time'?0:L.stocks,time:L.rules==='stock'?0:L.minutes*60*TPS};
  const slots=L.slots.map((q,k)=>k===0?{type:'human',char:q.char,col:q.col}:k===1?{type:'remote',char:q.char,col:q.col}:{...q});
+ if(L.mode==='adv'){advBegin({me:L.slots[0].char,partner:L.slots[1].char,diff:L.diff,stocks:clamp(L.stocks,1,5),online:true});return;}
  if(L.mode==='boss'){launchNet({rules:{stocks:L.stocks,time:0},stage:'sky',slots,boss:{diff:L.diff}});return;}
  launchNet({rules,stage:L.stage,slots});
 }
@@ -5671,9 +5756,9 @@ function onlineLobby(){
  showMenu(`<div class="bar" id="lobby"><button class="btn alt sm" id="lv">LEAVE</button><h2>ONLINE</h2>${host?'<button class="btn sm" id="go" style="font-size:22px;padding:6px 26px">FIGHT!</button>':'<div class="note" style="width:120px">Host starts the match</div>'}</div>
  <div class="vs"><div class="card"><h3>FIGHTERS</h3><div class="slots">${[0,1,2,3].map(k=>lobbySlotHTML(k,L,host)).join('')}</div>
   <div class="note" style="margin-top:6px">${host?'Tap your fighter to switch. Tap CPU or OFF to add up to 2 CPUs.':'Tap your fighter to switch. The host sets rules, stage and CPUs.'}</div></div>
- <div style="display:flex;flex-direction:column;gap:10px"><div class="card"><h3>MODE</h3><div class="opt"><div class="seg">${[['vs','VERSUS'],['boss','BOSS · BIG MITT']].map(([k,l])=>`<b ${host?`data-omd="${k}"`:''} class="${(L.mode||'vs')===k?'on':''}">${l}</b>`).join('')}</div></div>
-  ${L.mode==='boss'?`<div class="opt">Difficulty<div class="seg">${['EASY','NORMAL','HARD'].map((l,k)=>`<b ${host?`data-odf="${k}"`:''} class="${L.diff===k?'on':''}">${l}</b>`).join('')}</div></div>`:''}</div>
- ${L.mode==='boss'?`<div class="card"><h3>BOSS RULES</h3><div class="note">Everyone's on the same team against Big Mitt. CPU slots fight as your allies.</div><div class="opt">Stocks<div class="seg">${host?'<b data-ost="-1">−</b>':''}<span>${L.stocks}</span>${host?'<b data-ost="1">+</b>':''}</div></div></div>`:`<div class="card"><h3>RULES</h3>
+ <div style="display:flex;flex-direction:column;gap:10px"><div class="card"><h3>MODE</h3><div class="opt"><div class="seg">${[['vs','VERSUS'],['adv','ADVENTURE'],['boss','BOSS · BIG MITT']].map(([k,l])=>`<b ${host?`data-omd="${k}"`:''} class="${(L.mode||'vs')===k?'on':''}">${l}</b>`).join('')}</div></div>
+  ${L.mode==='boss'||L.mode==='adv'?`<div class="opt">Difficulty<div class="seg">${['EASY','NORMAL','HARD'].map((l,k)=>`<b ${host?`data-odf="${k}"`:''} class="${L.diff===k?'on':''}">${l}</b>`).join('')}</div></div>`:''}</div>
+ ${L.mode==='adv'?`<div class="card"><h3>ADVENTURE</h3><div class="note">You two team up through five fights, then face a challenger. Stocks carry over between fights. CPU slots aren't used.</div><div class="opt">Stocks<div class="seg">${host?'<b data-ost="-1">−</b>':''}<span>${Math.min(5,L.stocks)}</span>${host?'<b data-ost="1">+</b>':''}</div></div></div>`:L.mode==='boss'?`<div class="card"><h3>BOSS RULES</h3><div class="note">Everyone's on the same team against Big Mitt. CPU slots fight as your allies.</div><div class="opt">Stocks<div class="seg">${host?'<b data-ost="-1">−</b>':''}<span>${L.stocks}</span>${host?'<b data-ost="1">+</b>':''}</div></div></div>`:`<div class="card"><h3>RULES</h3>
   <div class="opt"><div class="seg">${['stock','time','both'].map(r=>`<b ${host?`data-orl="${r}"`:''} class="${rules===r?'on':''}">${r==='both'?'BOTH':r.toUpperCase()}</b>`).join('')}</div></div>
   ${rules!=='time'?`<div class="opt">Stocks<div class="seg">${host?'<b data-ost="-1">−</b>':''}<span>${L.stocks}</span>${host?'<b data-ost="1">+</b>':''}</div></div>`:''}
   ${rules!=='stock'?`<div class="opt">Minutes<div class="seg">${host?'<b data-omn="-1">−</b>':''}<span>${L.minutes}</span>${host?'<b data-omn="1">+</b>':''}</div></div>`:''}</div>
@@ -5713,9 +5798,9 @@ function goFull(){const d=document.documentElement;try{if(!document.fullscreenEl
 function titleScreen(){
  startMatch({attract:true,slots:[{type:'cpu',char:'mochi',lvl:8},{type:'cpu',char:'hippo',lvl:8},{type:'off'},{type:'off'}],rules:{stocks:0,time:0}});
  showMenu(`<div class="logo">SKY SCRAP<small>PLATFORM FIGHTER</small></div>
-  <button class="btn" id="vs">VERSUS</button>
+  <div class="row"><button class="btn" id="vs">VERSUS</button><button class="btn" id="ad">ADVENTURE</button></div>
   <div class="row"><button class="btn alt sm" id="bs">BOSS</button><button class="btn alt sm" id="tr">TRAINING</button><button class="btn alt sm" id="on">ONLINE</button><button class="btn alt sm" id="st">SETTINGS</button></div>`,false);
- bind('#vs',()=>{goFull();versusScreen();});bind('#tr',()=>{goFull();trainingScreen();});bind('#st',settingsScreen);
+ bind('#vs',()=>{goFull();versusScreen();});bind('#ad',()=>{goFull();advScreen();});bind('#tr',()=>{goFull();trainingScreen();});bind('#st',settingsScreen);
  bind('#on',onlineScreen);bind('#bs',()=>{goFull();bossScreen();});
 }
 const STAGE_LIST=[['cloudspire','Cloudspire','sky castle · dragon'],['lodge','Safari Lodge','rooftops, jeeps below'],['wreck','Sunken Ship','underwater, floaty'],['cake','Birthday Cake','gusts blow out candles'],['temple','Ruined Temple','3 platforms'],['sky','Sky Arena','flat'],['storm','Storm Front','moving clouds'],['ice','Ice Floe','cracking ice'],['island','Caribbean Island','hurricanes, rope'],['train','Train Tops','crossing gates'],['kitchen','Kitchen Counter','burners, toaster'],['lantern','Lantern Festival','lanterns, fireworks'],['volcano','Volcano Rim','rising lava'],['hole','Watering Hole','mud, flood, stampede'],['greenhouse','Greenhouse','mist, vine, glass walls'],['shelf','Final Shelf','no hazards'],['workshop',"Clank's Workshop",'belts, toys, vise'],['ferris','Ferris Wheel','spinning gondolas'],['moon','Moon Base','low gravity, airlock'],['origami','Origami','folds, pops up, flips over'],['spot','Center Stage','trapdoors open under the leader'],['ship','Dreadnought','jets, lasers, cannon fire'],['void','???','secret']];
@@ -5729,7 +5814,7 @@ function charOpen(id){return !!setup.unlockAll||!PLAYABLE.includes(id)||PROG.cha
 function stageOpen(id){if(setup.unlockAll)return true;const owner=Object.keys(HOME).find(c=>HOME[c]===id);return !owner||charOpen(owner);}
 function lockedChars(){return PLAYABLE.filter(id=>!PROG.chars.includes(id));}
 function challengeDue(){return !setup.unlockAll&&lockedChars().length>0&&PROG.matches>=PROG.next&&!(G&&G.net);}
-function chalGate(next){if(challengeDue())challengerScreen(next);else next();}
+function chalGate(next){next();}
 function silhouette(c,id){drawPortraitSafe(c,id,'#000000');const x=c.getContext('2d');x.setTransform(1,0,0,1,0,0);const W=c.width,H=c.height,im=x.getImageData(0,0,W,H),d=im.data;
  for(let i=0;i<d.length;i+=4){const on=d[i+3]>150;d[i]=on?12:120;d[i+1]=on?16:140;d[i+2]=on?34:200;d[i+3]=on?255:(d[i+3]>20?70:0);}x.putImageData(im,0,0);}
 function challengerScreen(next){
@@ -5844,6 +5929,7 @@ function setPause(on,send){
 function showResults(){
  if(G.net==='guest')return;
  if(G.boss)return bossResults();
+ if(G.adv&&RUN)return advAfterFight();
  const {arr,tied}=ranking();
  if(G.challenge&&!tied)return challengeResult();
  if(tied&&!G.sd){const slots=[0,1,2,3].map(k=>{const f=tied.find(t=>t.slot===k);return f?{...f.cfg}:{type:'off'};});const last=G.lastSlots,lr=G.lastRules,ln=G.lastNet;
