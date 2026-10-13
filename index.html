@@ -311,8 +311,8 @@ function stepHazards(){
   origamiGeo();}
  if(STG.spot){HZ.leader=findLeader();const Ld=fighters.find(f=>f.slot===HZ.leader&&!f.out);const T=STG.tiles;let ch=false;
   HZ.tl.forEach((tl,k)=>{tl.t++;
-   if(tl.st==='shut'){const on=Ld&&Ld.ground===STG.main&&Ld.x>T[k]&&Ld.x<T[k+1]&&frame>=(HZ.spCD||0);tl.c=on?tl.c+1:Math.max(0,tl.c-2);if(tl.c>=75){tl.st='crack';tl.t=0;tl.c=0;snd('crack',.6);}}
-   else if(tl.st==='crack'&&tl.t>=75){tl.st='open';tl.t=0;ch=true;HZ.spCD=frame+300;snd('thud',.7);shake(4);}
+   if(tl.st==='shut'){const safe=k===(T.length-1)/2-1||k===(T.length-1)/2;const on=!safe&&Ld&&Ld.ground===STG.main&&Ld.x>T[k]&&Ld.x<T[k+1]&&frame>=(HZ.spCD||0);tl.c=on?tl.c+1:Math.max(0,tl.c-2);if(tl.c>=75){tl.st='crack';tl.t=0;tl.c=0;snd('crack',.6);}}
+   else if(tl.st==='crack'&&tl.t>=75){tl.st='open';tl.t=0;ch=true;HZ.spCD=frame+10*TPS;snd('thud',.7);shake(4);}
    else if(tl.st==='open'){for(const f of fighters)if(!f.out&&f.y>0&&f.y<STG.blast.b&&f.x>T[k]-40&&f.x<T[k+1]+40&&!f.tdFell){f.tdFell=1;f.jumps=f.c.njumps;f.upB=false;f.sideB=false;}}
    if(tl.st==='open'&&tl.t>=120&&!fighters.some(f=>!f.out&&f.y>-10&&f.y<STG.blast.b&&f.x>T[k]-20&&f.x<T[k+1]+20&&f.state!=='respawn')){tl.st='shut';tl.t=0;ch=true;snd('clang',.4);}});
   // the leader gets a break: one bounce back up through the hole they fell into
@@ -321,7 +321,7 @@ function stepHazards(){
   if(ch)spotBody();
   for(const p of STG.plats){if(!p.crumble)continue;p.ct++;
    if(p.st==='ok'){const on=Ld&&Ld.ground===p&&frame>=(HZ.spCD||0);p.cc=on?p.cc+1:Math.max(0,p.cc-2);if(p.cc>=80){p.st='shake';p.ct=0;snd('crack',.5);}}
-   else if(p.st==='shake'&&p.ct>=45){HZ.spCD=frame+300;p.st='gone';p.ct=0;dropRiders(p);p.y=-9999;snd('thud',.5);for(let k=0;k<8;k++)fxPush({k:'debris',x:p.x1+rand()*(p.x2-p.x1),y:p.y0,vx:(rand()-.5)*3,vy:-1-rand()*2,t:0,len:40,s:6+rand()*6});}
+   else if(p.st==='shake'&&p.ct>=45){HZ.spCD=frame+10*TPS;p.st='gone';p.ct=0;dropRiders(p);p.y=-9999;snd('thud',.5);for(let k=0;k<8;k++)fxPush({k:'debris',x:p.x1+rand()*(p.x2-p.x1),y:p.y0,vx:(rand()-.5)*3,vy:-1-rand()*2,t:0,len:40,s:6+rand()*6});}
    else if(p.st==='gone'&&p.ct>=360){p.st='ok';p.ct=0;p.cc=0;p.y=p.y0;}}}
  if(STG.workshop){HZ.bt++;
   if(HZ.bt===600)snd('bell',.4);if(HZ.bt>=690){HZ.belt=-HZ.belt;HZ.bt=0;snd('crank',.6);}
