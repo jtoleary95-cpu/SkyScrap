@@ -2046,7 +2046,7 @@ function stepProjectiles(){
  }
  for(let k=puddles.length-1;k>=0;k--){const q=puddles[k];q.t++;
   if(q.kind==='whirl'){const cx=(q.x1+q.x2)/2;if(q.t%4===0)fxPush({k:'water',x:cx+Math.cos(q.t*0.3)*50,y:q.y-4,vx:-Math.sin(q.t*0.3)*2,vy:-0.6,t:0,len:14,s:5});
-   for(const t of fighters){if(t===q.owner||t.out||!canBeHit(t))continue;if(G&&G.boss)continue;const dx=cx-t.x;if(Math.abs(dx)<110&&t.y>q.y-70&&t.y<=q.y+2){if(t.ground===q.surf)t.x+=sgn(dx)*Math.min(1.8,Math.abs(dx));if(Math.abs(dx)<28&&q.t%14===0){t.pct=Math.min(999,t.pct+1.5);t.hud=5;q.owner.dmgDone+=1.5;}if(Math.abs(dx)<28&&q.t>=q.len-2)hitTarget(q.owner,t,{d:7,a:80,b:46,g:60},cx,q.y-20,1,{vx:0});}}}
+   for(const t of fighters){if(t===q.owner||t.out||!canBeHit(t)||friendly(q.owner,t))continue;if(G&&G.boss)continue;const dx=cx-t.x;if(Math.abs(dx)<110&&t.y>q.y-70&&t.y<=q.y+2){if(t.ground===q.surf)t.x+=sgn(dx)*Math.min(1.8,Math.abs(dx));if(Math.abs(dx)<28&&q.t%14===0){t.pct=Math.min(999,t.pct+1.5);t.hud=5;q.owner.dmgDone+=1.5;}if(Math.abs(dx)<28&&q.t>=q.len-2)hitTarget(q.owner,t,{d:7,a:80,b:46,g:60},cx,q.y-20,1,{vx:0});}}}
   else if(q.kind==='wax'){for(const t of fighters){if(t===q.owner||t.out)continue;if(t.ground===q.surf&&t.x>=q.x1-t.w/3&&t.x<=q.x2+t.w/3)t.waxT=3;}}
   else if(q.kind==='foam'){for(const t of fighters){if(t===q.owner||t.out)continue;if(t.ground===q.surf&&t.x>=q.x1-t.w/3&&t.x<=q.x2+t.w/3)t.slickT=3;}}
   else if(q.t%20===0)for(const t of fighters){if(t===q.owner||!canBeHit(t)||friendly(q.owner,t))continue;
@@ -2083,7 +2083,12 @@ function cpuInput(f){
  const press=k=>{if(!P[k])i[k]=1;};
  let t=null,bd=1e9;
  if(G.boss)t=G.boss.T.alive?G.boss.T:null;
- else for(const o of fighters){if(o===f||o.out||o.state==='respawn')continue;const d=Math.abs(o.x-f.x)+Math.abs(o.y-f.y)*0.8;if(d<bd){bd=d;t=o;}}
+ else if(G.adv){const ok=o=>o&&o!==f&&!o.out&&o.state!=='respawn'&&!friendly(f,o);
+  if(!ok(A.tg)||A.t>=(A.tgT||0)){let best=null,bs=1e9;for(const o of fighters){if(!ok(o))continue;
+    const n=fighters.filter(q=>q!==f&&q.cpu&&q.ai&&q.ai.tg===o).length;const sc=Math.abs(o.x-f.x)+Math.abs(o.y-f.y)*0.8+n*400+rand()*120;if(sc<bs){bs=sc;best=o;}}
+   A.tg=best;A.tgT=A.t+90+Math.floor(rand()*90);}
+  t=A.tg;}
+ else for(const o of fighters){if(o===f||o.out||o.state==='respawn'||friendly(f,o))continue;const d=Math.abs(o.x-f.x)+Math.abs(o.y-f.y)*0.8;if(d<bd){bd=d;t=o;}}
  switch(f.state){
   case 'respawn':if(f.sf>40+(A.rw||(A.rw=1+rand()*50))){i.x=0.5;A.rw=0;}return i;
   case 'ledge':if(A.ld===undefined)A.ld=12+(9-L)*5+rand()*30;
@@ -2235,7 +2240,7 @@ function itemLand(it){for(const sf of SURF){if(sf.y>5000)continue;if(it.vy>=0&&i
 function itemStrike(o,f,hb,x,y,dir){if(o&&!o.out){hitTarget(o,f,hb,x,y,1,{vx:dir});return;}if(f.state==='shield'||f.state==='shieldstun'){f.shield-=hb.d;return;}launch(f,hb.d,hb.a,hb.b,hb.g,dir,null,false);f.hitlag=Math.floor(hb.d/3)+3;fxPush({k:'spark',x,y,t:0,len:12,s:10+hb.d*1.6});snd('hit',Math.min(1,0.2+hb.d/18));}
 function explode(it,owner){const x=it.x,y=it.y-10;snd('boom',1);shake(12);for(let k=0;k<18;k++){const a=k/18*Math.PI*2;fxPush({k:'fire',x:x+Math.cos(a)*30,y:y+Math.sin(a)*30,vx:Math.cos(a)*3,vy:Math.sin(a)*3,t:0,len:22,s:14});}
  fxPush({k:'ring',x,y,t:0,len:18,s:80,col:'#ffd166'});
- for(const f of fighters){if(!canBeHit(f))continue;const dx=f.x-x,dy=(f.y-f.h/2)-y;if(dx*dx+dy*dy<80*80)itemStrike(owner,f,{d:18,a:70,b:50,g:90},x,y,sgn(dx)||1);}
+ for(const f of fighters){if(!canBeHit(f)||friendly(owner,f))continue;const dx=f.x-x,dy=(f.y-f.h/2)-y;if(dx*dx+dy*dy<80*80)itemStrike(owner,f,{d:18,a:70,b:50,g:90},x,y,sgn(dx)||1);}
  if(G.boss)bossTouch(x,y,70,owner,18);it.dead=1;}
 function breakCrate(it,owner){snd('crack',.8);for(let k=0;k<10;k++)fxPush({k:'debris',x:it.x+(rand()-.5)*30,y:it.y-14,vx:(rand()-.5)*5,vy:-2-rand()*3,t:0,len:36,s:6+rand()*6});
  const n=1+(rand()<0.5?1:0);for(let k=0;k<n;k++){const ni=mkItem(pickKind(true),it.x+(k-0.5)*20,it.y-24,(k-0.5)*3,-5);items.push(ni);}it.dead=1;}
@@ -2329,7 +2334,7 @@ function drawHeld(f){const k=f.itm;if(!k)return;ctx.save();const hx=f.w*0.38,hy=
 /* ---------------- BOSS MODE: Big Mitt ----------------
    A giant glove with HP, fought by up to four players on the same side. */
 const BOSSF={slot:8,id:'boss',x:0,y:0,face:-1,dmgDone:0,kos:0,score:0,out:false,move:null,hitlag:0,col:'#ffffff',c:{name:'Big Mitt',weight:200},hitSet:new Map()};
-function friendly(a,t){return !!(G&&G.boss&&a!==BOSSF&&t!==BOSSF);}
+function friendly(a,t){if(!G||!a||!t)return false;if(G.boss)return a!==BOSSF&&t!==BOSSF;if(G.adv&&a!==t)return !!a.cpu===!!t.cpu;return false;}
 const BOSS_S=4.4;
 function makeBoss(diff,n){const hp=Math.round([240,340,460][diff]*(1+0.25*(n-1)));
  return{x:0,y:-760,face:-1,hp,max:hp,ghost:hp,diff,spd:[0.85,1,1.25][diff],st:'enter',t:0,pose:'open',aim:-1.57,R:92,flash:0,cd:new Map(),last:'',tgt:null,
@@ -2566,10 +2571,15 @@ function startMatch(opts){
  slots.forEach((q,k)=>{if(q.type!=='off')q.char=fitAnyChar(q.char,STG.id,k);});
  let n=0;
  slots.forEach((s,k)=>{if(s.type==='off')return;const f=makeFighter(k,s,rules);if(opts.pct)f.pct=opts.pct;fighters.push(f);n++;});
+ spreadSpawns();
  cam.x=0;cam.y=-80;cam.tx=0;cam.ty=-80;cam.z=Math.min(SW/1000,SH/620);wakeOn();
  if(!G.attract)snd('go',0);
  musicSync();
 }
+// even start spacing: active fighters fill the stage's spawn points left to right, no clumping
+function spreadSpawns(){const n=fighters.length;if(n<2)return;const P=STG.spawns.slice().sort((p,q)=>p-q),lo=P[0],hi=P[P.length-1];
+ let xs;if(n===2)xs=[lo,hi];else if(n===3){let mid=(lo+hi)/2;const M=STG.main;if(!(mid>=M.x1&&mid<=M.x2))mid=P.reduce((b,x)=>Math.abs(x-mid)<Math.abs(b-mid)?x:b,P[1]);xs=[lo,mid,hi];}else xs=P.slice(0,n);
+ const c=(lo+hi)/2;fighters.forEach((f,k)=>{f.x=xs[k];f.face=f.x<c?1:f.x>c?-1:(k%2?-1:1);});}
 function stepGame(){
  if(!G||G.paused)return;
  if(G.net==='guest'){guestStep();return;}
@@ -5611,7 +5621,7 @@ function netLost(msg){
  showMenu(`<h2>DISCONNECTED</h2><div class="note">${msg||'The connection dropped.'}</div><button class="btn" id="ok">OK</button>`,true);bind('#ok',titleScreen);
 }
 function lobbyState(){return{mode:OSET.mode||'vs',diff:OSET.diff===undefined?1:OSET.diff,rules:OSET.rules,stocks:OSET.stocks,minutes:OSET.minutes,stage:OSET.stage,
- slots:fixColors([{type:'host',char:OSET.hostChar,col:OSET.hostCol},{type:'guest',char:NET.guestChar,col:NET.guestCol},{...OSET.cpus[0]},{...OSET.cpus[1]}]).map((q,k)=>({...q,char:fitAnyChar(q.char,OSET.stage,k)}))};}
+ slots:fixColors([{type:'host',char:OSET.hostChar,col:OSET.hostCol},{type:'guest',char:NET.guestChar,col:NET.guestCol},{...OSET.cpus[0]},{...OSET.cpus[1]}]).map((q,k)=>({...q,char:k>1?fitChar(q.char,OSET.stage,k):fitAnyChar(q.char,OSET.stage,k)}))};}
 function sendLobby(){if(NET.role==='host')netSend({t:'lobby',l:lobbyState()});}
 function onNetMsg(m){
  switch(m.t){
@@ -5744,7 +5754,7 @@ function lobbySlotHTML(k,L,host){
  return `<div class="slot ${off?'off':''}" style="border-color:${off?'transparent':pc}">
   <div class="tag" ${host&&k>1?`data-ot="${k}"`:''} style="background:${off?'#46557f':pc};color:${!off&&q.col===7?'#1b2338':'#fff'}">${label}</div>
   <canvas width="128" height="128" data-oc="${k}" data-char="${q.char}" data-colhex="${pc}"></canvas>
-  <div class="nm" ${canChar?`data-oc="${k}"`:''}>${CHARS[q.char].name}${canChar?' ▸':''}</div>
+  <div class="nm" ${canChar?`data-oc="${k}"`:''}>${k>1&&!charOpen(q.char)?'???':CHARS[q.char].name}${canChar?' ▸':''}</div>
   <div class="srow">${off?'':`<div class="cdot" ${canChar?`data-ocol="${k}"`:''} style="background:${pc}"></div>`}${q.type==='cpu'?`<div class="lv">${host?`<b data-ol="${k}" data-d="-1">−</b>`:''}LV ${q.lvl}${host?`<b data-ol="${k}" data-d="1">+</b>`:''}</div>`:''}</div>
  </div>`;}
 function onlineLobby(){
@@ -5763,7 +5773,7 @@ function onlineLobby(){
   ${rules!=='time'?`<div class="opt">Stocks<div class="seg">${host?'<b data-ost="-1">−</b>':''}<span>${L.stocks}</span>${host?'<b data-ost="1">+</b>':''}</div></div>`:''}
   ${rules!=='stock'?`<div class="opt">Minutes<div class="seg">${host?'<b data-omn="-1">−</b>':''}<span>${L.minutes}</span>${host?'<b data-omn="1">+</b>':''}</div></div>`:''}</div>
  <div class="card"><h3>STAGE</h3>${stageHTML(L.stage,host?'data-ostg':'')}</div>`}</div></div>`,true);
- menu.querySelectorAll('canvas[data-oc]').forEach(c=>drawPortraitSafe(c,c.dataset.char,c.dataset.colhex));
+ menu.querySelectorAll('canvas[data-oc]').forEach(c=>{if(+c.dataset.oc>1&&!charOpen(c.dataset.char))silhouette(c,c.dataset.char);else drawPortraitSafe(c,c.dataset.char,c.dataset.colhex);});
  const upd=()=>{saveOnline();sendLobby();onlineLobby();};
  bind('[data-oc]',el=>{const k=+el.dataset.oc;
   const hexOf=PALETTE[L.slots[k].col];
