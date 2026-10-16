@@ -1,8 +1,8 @@
 // Sky Scrap offline cache.
 // The game page is network-first, so new versions show up whenever there's a connection;
 // with no connection it loads from the cache. Fonts and three.js are cached after first fetch.
-const CACHE = 'skyscrap-v1';
-const CORE = ['./', './index.html', './manifest.json'];
+const CACHE = 'skyscrap-v2';
+const CORE = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 const EXTRA = [
   'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js',
   'https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&display=swap'
