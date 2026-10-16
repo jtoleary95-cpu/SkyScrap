@@ -1,0 +1,9 @@
+{
+  "name": "Sky Scrap",
+  "short_name": "Sky Scrap",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "background_color": "#1b2338",
+  "theme_color": "#1b2338"
+}

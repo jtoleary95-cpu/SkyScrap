@@ -7,6 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1b2338">
 <title>Sky Scrap</title>
+<link rel="manifest" href="manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&display=swap" rel="stylesheet">
 <style>
@@ -5701,6 +5702,7 @@ function wireChannel(ch){
 }
 function netSend(m,reliable){const ch=reliable===false?NET.dc:NET.rc;if(ch&&ch.readyState==='open'){try{ch.send(JSON.stringify(m));}catch(e){}}}
 async function hostOnline(){
+ if(!navigator.onLine){onlineError('Online play needs internet. Solo and CPU modes work offline.');return;}
  netReset();NET.closing=false;NET.role='host';NET.code=makeCode();onlineWaitScreen();
  try{
   const sig=await getSignal(NET.code);if(NET.role!=='host')return;NET.sig=sig;await sig.reset();
@@ -5718,6 +5720,7 @@ async function hostOnline(){
 }
 function waitFor(sig,k,ms){return new Promise(res=>{let done=false;sig.on(k,v=>{if(!done){done=true;res(v);}});setTimeout(()=>{if(!done){done=true;res(null);}},ms);});}
 async function joinOnline(code){
+ if(!navigator.onLine){onlineError('Online play needs internet. Solo and CPU modes work offline.');return;}
  netReset();NET.closing=false;NET.role='guest';NET.code=code;onlineMsg('Connecting to '+code+'…');
  try{
   const sig=await getSignal(code);if(NET.role!=='guest')return;NET.sig=sig;
@@ -6186,6 +6189,8 @@ titleScreen();
 {const jc=(new URLSearchParams(location.search).get('join')||'').toUpperCase();if(/^[A-Z]{4}$/.test(jc)){history.replaceState(null,'',location.pathname);joinOnline(jc);}}
 
 requestAnimationFrame(loop);
+// offline play: cache the game on first load so it opens with no connection
+if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{});});
 </script>
 </body>
 </html>
